@@ -1,3 +1,4 @@
+
 import streamlit as st
 import pandas as pd
 import itertools
@@ -67,7 +68,24 @@ with tab1:
                 with st.spinner("AIが考案中..."):
                     model = genai.GenerativeModel('models/gemini-1.5-flash-latest')
                     prompt = f"組織開発のプロとして{p1['名前']}と{p2['名前']}の相性を分析して。趣味:{p1['趣味']}/{p2['趣味']}、強み:{p1['強み']}/{p2['強み']}"
-                    response = model.generate_content(prompt)
+                    with st.spinner("AIが考案中..."):
+                        # 修正点1: モデル名の指定を最も確実な形式にする
+                        # flashがダメな時のために、より汎用的な名前を試します
+                        model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                        
+                        prompt = f"""
+                        組織開発の専門家として、以下の2名の相性を具体的に分析してください。
+                        【メンバー1】名前:{p1['名前']}, 強み:{p1['強み']}, 趣味:{p1['趣味']}
+                        【メンバー2】名前:{p2['名前']}, 強み:{p2['強み']}, 趣味:{p2['趣味']}
+                        """
+                        
+                        # 修正点2: エラーが起きた際、詳細を表示するようにする
+                        try:
+                            response = model.generate_content(prompt)
+                            st.markdown(f'<div class="ai-card">{response.text}</div>', unsafe_allow_html=True)
+                        except Exception as inner_e:
+                            st.error(f"モデル接続エラー: {inner_e}")
+                            st.info("💡 対策: Google AI Studioで新しいAPIキーを発行し、SettingsのSecretsを更新してみてください。")
                     st.markdown(f'<div class="ai-card">{response.text}</div>', unsafe_allow_html=True)
 
 with tab2:
