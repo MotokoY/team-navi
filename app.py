@@ -1,5 +1,136 @@
 import streamlit as st
+import pandas as pdimport streamlit as st
 import pandas as pd
+import itertools
+import google.generativeai as genai
+
+# ページ設定
+st.set_page_config(page_title="チームナビ Pro (AI搭載)", page_icon="🧭", layout="wide")
+
+# カスタムCSS（見栄えを良くする）
+st.markdown("""
+    <style>
+    .ai-report-card {
+        background-color: #f8fafc;
+        padding: 25px;
+        border-radius: 15px;
+        border-left: 8px solid #3B82F6;
+        box-shadow: 0 4px 6px rgba(0,0,0,0.05);
+        margin-bottom: 25px;
+    }
+    .badge {
+        background-color: #3B82F6;
+        color: white;
+        padding: 4px 10px;
+        border-radius: 20px;
+        font-size: 0.8em;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+st.title("🧭 チームナビ Pro")
+st.caption("生成AIがメンバーの個性を多角的に分析し、化学反応を予測する次世代ナビゲーション。")
+
+# --- 【超重要】APIキーの設定エリア ---
+# ※まずはここにステップ1で取得した鍵を貼り付けてみてください。
+# （GitHubに公開する際は、後ほど安全な設定方法に変えます）
+# --- 安全なAPIキーの読み込み設定 ---
+import os
+
+# Streamlitの金庫（Secrets）から鍵を探す
+if "GOOGLE_API_KEY" in st.secrets:
+    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+else:
+    GOOGLE_API_KEY = None
+
+# 鍵が見つかればAIを起動する
+if GOOGLE_API_KEY:
+    genai.configure(api_key=GOOGLE_API_KEY)
+else:
+    st.error("APIキーが設定されていません。Streamlit CloudのSettingsから設定してください
+
+# サイドバー：APIキーの直接入力も可能にしておく（安全対策）
+with st.sidebar:
+    st.header("⚙️ システム設定")
+    user_key = st.text_input("Gemini API Key", type="password", help="Google AI Studioで取得したキーを入力してください")
+    if user_key:
+        genai.configure(api_key=user_key)
+        GOOGLE_API_KEY = user_key
+
+    st.divider()
+    st.header("👤 メンバーエントリー")
+    with st.form("entry_form", clear_on_submit=True):
+        name = st.text_input("名前")
+        strength = st.text_input("強み（例：データ分析、チームマネジメント、営業）")
+        hobby = st.text_input("趣味（例：サウナ、クラフトビール、ゴルフ）")
+        boom = st.text_input("マイブーム（例：生成AI、読書、宅トレ）")
+        submitted = st.form_submit_button("ナビに登録")
+        if submitted and name:
+            if 'member_list' not in st.session_state:
+                st.session_state.member_list = []
+            st.session_state.member_list.append({
+                "名前": name, "強み": strength, "趣味": hobby, "マイブーム": boom
+            })
+
+# 2名以上登録されるまで待機
+if 'member_list' not in st.session_state or len(st.session_state.member_list) < 2:
+    st.info("💡 分析を開始するには、サイドバーから2名以上のメンバーを登録してください。")
+    st.stop()
+
+df = pd.DataFrame(st.session_state.member_list)
+
+# --- タブ構成 ---
+tab1, tab2 = st.tabs(["🤝 AI深層相性診断", "📊 メンバー一覧"])
+
+with tab1:
+    st.subheader("🤖 Geminiが紐解くメンバーシナジー")
+    st.write("登録されたデータに基づき、AIが二人の『隠れた共通点』や『ビジネス上の化学反応』を丁寧に分析します。")
+    
+    # 2人の全組み合わせをループ処理
+    for p1, p2 in itertools.combinations(st.session_state.member_list, 2):
+        st.markdown(f"### 👥 {p1['名前']} × {p2['名前']}")
+        
+        # AI分析を実行するボタン（毎回APIを叩くと重いので、ボタン式にするか自動にするか）
+        button_key = f"analyze_{p1['名前']}_{p2['名前']}"
+        if st.button(f"🔍 {p1['名前']}さんと{p2['名前']}さんの相性をAI分析", key=button_key):
+            with st.spinner("AIがプロファイルを熟読中..."):
+                try:
+                    # AIへの指示（プロンプト）の設計
+                    prompt = f"""
+                    あなたは組織開発とチームビルディングの専門家（MBAホルダー）です。
+                    以下の2人のメンバーのプロフィール（名前、強み、趣味、マイブーム）を読み込み、
+                    二人が出会うことで生まれる「化学反応」や「意外な共通点」を、優しく、かつ論理的に丁寧に分析してください。
+
+                    【メンバー1】
+                    名前: {p1['名前']} / 強み: {p1['強み']} / 趣味: {p1['趣味']} / マイブーム: {p1['マイブーム']}
+
+                    【メンバー2】
+                    名前: {p2['名前']} / 強み: {p2['強み']} / 趣味: {p2['趣味']} / マイブーム: {p2['マイブーム']}
+
+                    【出力形式】
+                    以下の3つの項目で、具体的かつユーモアを交えて出力してください。
+                    1. 予測される二人のコンビ名・キャッチコピー
+                    2. 二人が掛け合わさることで生まれるビジネスシナジー（強みの補完関係など）
+                    3. 飲み会で絶対に盛り上がる「二人の共通トークテーマ」の提案
+                    """
+                    
+                    # 最新の軽量・高速モデル「gemini-1.5-flash」を使用
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    response = model.generate_content(prompt)
+                    
+                    # 分析結果をカード形式で表示
+                    st.markdown(f"""
+                    <div class="ai-report-card">
+                        {response.text.replace("\n", "<br>")}
+                    </div>
+                    """, unsafe_allow_html=True)
+                    
+                except Exception as e:
+                    st.error(f"分析中にエラーが発生しました。APIキーが正しいか確認してください。: {e}")
+
+with tab2:
+    st.subheader("📋 登録メンバー一覧")
+    st.dataframe(df, use_container_width=True, hide_index=True)
 import streamlit as st
 import pandas as pd
 import collections
