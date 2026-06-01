@@ -50,7 +50,7 @@ with tab1:
                 try:
                     with st.spinner("AIが考え中..."):
                         # モデル名を最新の安定版に固定
-                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        model = genai.GenerativeModel('models/gemini-1.5-flash')
                         prompt = f"{p1['名前']}（強み:{p1['強み']}）と{p2['名前']}（強み:{p2['強み']}）のビジネス相性を100文字で分析して。"
                         response = model.generate_content(prompt)
                         st.success(response.text)
