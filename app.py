@@ -1,4 +1,3 @@
-
 import streamlit as st
 import pandas as pd
 import itertools
@@ -66,7 +65,7 @@ with tab1:
             st.markdown(f"#### 👥 {p1['名前']} × {p2['名前']}")
             if st.button(f"分析する ({p1['名前']} & {p2['名前']})", key=f"btn_{p1['名前']}_{p2['名前']}"):
                 with st.spinner("AIが考案中..."):
-                    model = genai.GenerativeModel('gemini-1.5-flash-latest')
+                    model = genai.GenerativeModel('models/gemini-1.5-flash')
                     prompt = f"組織開発のプロとして{p1['名前']}と{p2['名前']}の相性を分析して。趣味:{p1['趣味']}/{p2['趣味']}、強み:{p1['強み']}/{p2['強み']}"
                     response = model.generate_content(prompt)
                     st.markdown(f'<div class="ai-card">{response.text}</div>', unsafe_allow_html=True)
