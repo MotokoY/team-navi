@@ -1,7 +1,121 @@
 import streamlit as st
 import pandas as pdimport streamlit as st
 import pandas as pd
+import itertoolsimport streamlit as st
+import pandas as pd
 import itertools
+import collections
+import google.generativeai as genai
+
+# 1. ページ設定とデザイン
+st.set_page_config(page_title="チームナビ Pro", page_icon="🧭", layout="wide")
+
+st.markdown("""
+    <style>
+    .main { background-color: #f8fafc; }
+    .stTabs [data-baseweb="tab-list"] { gap: 24px; }
+    .stTabs [data-baseweb="tab"] {
+        height: 50px; white-space: pre-wrap; background-color: #ffffff;
+        border-radius: 10px 10px 0px 0px; gap: 1px;
+    }
+    .ai-card {
+        background-color: #ffffff; padding: 20px; border-radius: 15px;
+        border-left: 10px solid #3B82F6; box-shadow: 0 4px 12px rgba(0,0,0,0.05);
+        margin-bottom: 20px; color: #1e293b;
+    }
+    </style>
+    """, unsafe_allow_html=True)
+
+# 2. 安全なAPIキーの読み込み
+if "GOOGLE_API_KEY" in st.secrets:
+    GOOGLE_API_KEY = st.secrets["GOOGLE_API_KEY"]
+    genai.configure(api_key=GOOGLE_API_KEY)
+else:
+    GOOGLE_API_KEY = None
+
+# 3. データ管理
+if 'member_list' not in st.session_state:
+    st.session_state.member_list = []
+
+# --- ヘッダー ---
+st.title("🧭 チームナビ Pro")
+st.markdown("### 〜 AIが導く、チームの新しい可能性 〜")
+
+# --- サイドバー：メンバー登録 ---
+with st.sidebar:
+    st.header("👤 メンバー登録")
+    with st.form("entry_form", clear_on_submit=True):
+        name = st.text_input("名前（ニックネーム）")
+        strength = st.text_input("強み（例：分析、調整、実行力）")
+        hobby = st.text_input("趣味（例：サウナ、ゴルフ）")
+        boom = st.text_input("マイブーム（例：生成AI、筋トレ）")
+        submitted = st.form_submit_button("ナビに追加")
+        
+        if submitted and name:
+            st.session_state.member_list.append({
+                "名前": name, "強み": strength, "趣味": hobby, "マイブーム": boom
+            })
+            st.toast(f"{name}さんを登録しました！", icon="✅")
+
+# 4. メインコンテンツ
+if len(st.session_state.member_list) < 2:
+    st.info("💡 分析を開始するには、サイドバーから2名以上のメンバーを登録してください。")
+    st.stop()
+
+df = pd.DataFrame(st.session_state.member_list)
+tab1, tab2, tab3, tab4 = st.tabs(["🤝 AI相性診断", "📊 チーム強み分析", "💬 話題ガチャ", "📋 メンバー表"])
+
+# --- タブ1：AI相性診断 ---
+with tab1:
+    st.subheader("🤖 Gemini 1.5 による深層シナジー分析")
+    if not GOOGLE_API_KEY:
+        st.warning("⚠️ APIキーが設定されていないため、AI分析はスキップされます。")
+    else:
+        for p1, p2 in itertools.combinations(st.session_state.member_list, 2):
+            st.markdown(f"#### 👥 {p1['名前']} × {p2['名前']}")
+            if st.button(f"🔍 {p1['名前']} & {p2['名前']} の相性を分析", key=f"ai_{p1['名前']}_{p2['名前']}"):
+                with st.spinner("AIが化学反応を予測中..."):
+                    prompt = f"""
+                    組織開発専門家として、以下の2名の相性を丁寧に分析してください。
+                    【A】名前:{p1['名前']}, 強み:{p1['強み']}, 趣味:{p1['趣味']}, マイブーム:{p1['マイブーム']}
+                    【B】名前:{p2['名前']}, 強み:{p2['強み']}, 趣味:{p2['趣味']}, マイブーム:{p2['マイブーム']}
+                    以下の構成で出力してください。
+                    1. 二人の「コンビ名」
+                    2. ビジネス上のシナジー（強みの補完関係）
+                    3. 飲み会で盛り上がる「共通の話題案」
+                    """
+                    model = genai.GenerativeModel('gemini-1.5-flash')
+                    response = model.generate_content(prompt)
+                    st.markdown(f'<div class="ai-card">{response.text}</div>', unsafe_allow_html=True)
+
+# --- タブ2：チーム強み分析 ---
+with tab2:
+    st.subheader("💪 組織資産の可視化")
+    all_strengths = [s.strip() for s in ",".join(df['強み']).replace("、", ",").split(",") if s.strip()]
+    counts = collections.Counter(all_strengths)
+    
+    col1, col2 = st.columns(2)
+    with col1:
+        st.write("**チーム内のスキル分布**")
+        st.bar_chart(pd.DataFrame.from_dict(counts, orient='index', columns=['人数']))
+    with col2:
+        st.metric("登録スキル数", f"{len(counts)} 種")
+        st.write("💡 **DX推進アドバイス:**")
+        st.write("多様なスキルがバランスよく配置されています。未知の課題に対する適応力が高いチームです。")
+
+# --- タブ3：話題ガチャ ---
+with tab3:
+    st.subheader("💬 今夜のトークテーマ")
+    if st.button("🎲 話題をシャッフル"):
+        pair = df.sample(2)
+        m1, m2 = pair.iloc[0], pair.iloc[1]
+        st.success(f"**{m1['名前']}さん** と **{m2['名前']}さん** のトークタイム！")
+        st.info(f"お題：『{m2['名前']}さんがハマっている「{m2['マイブーム']}」の魅力について教えてもらおう！』")
+
+# --- タブ4：メンバー表 ---
+with tab4:
+    st.subheader("📋 登録メンバー一覧")
+    st.dataframe(df, use_container_width=True, hide_index=True)
 import google.generativeai as genai
 
 # ページ設定
