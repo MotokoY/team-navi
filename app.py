@@ -1,103 +1,61 @@
-
 import streamlit as st
 import pandas as pd
 import itertools
-import collections
 import google.generativeai as genai
 
-# 1. ページ設定
-st.set_page_config(page_title="チームナビ Pro", page_icon="🧭", layout="wide")
+# --- 1. ページ設定 ---
+st.set_page_config(page_title="チームナビ Pro", layout="wide")
 
-# 2. デザイン（CSS）
-st.markdown("""
-    <style>
-    .main { background-color: #f8fafc; }
-    .ai-card {
-        background-color: #ffffff; padding: 20px; border-radius: 15px;
-        border-left: 10px solid #3B82F6; box-shadow: 0 4px 12px rgba(0,0,0,0.05);
-        margin-bottom: 20px; color: #1e293b;
-    }
-    </style>
-    """, unsafe_allow_html=True)
-
-# 3. 安全なAPIキーの読み込み（エラーが出にくいシンプルな書き方に変更）
-GOOGLE_API_KEY = st.secrets.get("GOOGLE_API_KEY")
-
-if GOOGLE_API_KEY:
-    genai.configure(api_key=GOOGLE_API_KEY)
+# --- 2. 安全なAPIキーの読み込みと設定 ---
+# ここで名前の定義（NameError）が起きないように確実に設定します
+if "GOOGLE_API_KEY" in st.secrets:
+    api_key = st.secrets["GOOGLE_API_KEY"]
+    genai.configure(api_key=api_key)
+    has_api_key = True
 else:
-    st.sidebar.error("API Key not found in Secrets.")
+    has_api_key = False
 
-# 4. データ保持
+# --- 3. データ管理 ---
 if 'member_list' not in st.session_state:
     st.session_state.member_list = []
 
 st.title("🧭 チームナビ Pro")
-st.markdown("### 〜 AIが導く、チームの新しい可能性 〜")
 
-# 5. サイドバー：登録フォーム
+# --- 4. サイドバー：メンバー登録 ---
 with st.sidebar:
     st.header("👤 メンバー登録")
     with st.form("entry_form", clear_on_submit=True):
         name = st.text_input("名前")
         strength = st.text_input("強み")
         hobby = st.text_input("趣味")
-        boom = st.text_input("マイブーム")
         submitted = st.form_submit_button("登録")
         if submitted and name:
-            st.session_state.member_list.append({
-                "名前": name, "強み": strength, "趣味": hobby, "マイブーム": boom
-            })
+            st.session_state.member_list.append({"名前": name, "強み": strength, "趣味": hobby})
 
-# 6. 分析画面
+# --- 5. メイン画面 ---
 if len(st.session_state.member_list) < 2:
-    st.info("2名以上の登録で分析を開始します。")
+    st.info("2名以上のメンバーを登録してください。")
     st.stop()
 
-df = pd.DataFrame(st.session_state.member_list)
-tab1, tab2, tab3 = st.tabs(["🤝 AI相性診断", "📊 強み分析", "💬 話題ガチャ"])
+tab1, tab2 = st.tabs(["🤝 AI相性分析", "📋 メンバー一覧"])
 
 with tab1:
-    st.subheader("🤖 AIによる深層シナジー分析")
-    if not GOOGLE_API_KEY:
-        st.warning("APIキーが設定されていません。")
+    st.subheader("🤖 Gemini 1.5 相性診断")
+    if not has_api_key:
+        st.error("APIキーが設定されていません。StreamlitのSecretsを確認してください。")
     else:
         for p1, p2 in itertools.combinations(st.session_state.member_list, 2):
             st.markdown(f"#### 👥 {p1['名前']} × {p2['名前']}")
             if st.button(f"分析する ({p1['名前']} & {p2['名前']})", key=f"btn_{p1['名前']}_{p2['名前']}"):
-                with st.spinner("AIが考案中..."):
-                    model = genai.GenerativeModel('gemini-1.5-flash')
-                    prompt = f"組織開発のプロとして{p1['名前']}と{p2['名前']}の相性を分析して。趣味:{p1['趣味']}/{p2['趣味']}、強み:{p1['強み']}/{p2['強み']}"
-                    with st.spinner("AIが考案中..."):
-                        # 修正点1: モデル名の指定を最も確実な形式にする
-                        # flashがダメな時のために、より汎用的な名前を試します
-                        model = genai.GenerativeModel('gemini-1.5-flash-latest')
-                        
-                        prompt = f"""
-                        組織開発の専門家として、以下の2名の相性を具体的に分析してください。
-                        【メンバー1】名前:{p1['名前']}, 強み:{p1['強み']}, 趣味:{p1['趣味']}
-                        【メンバー2】名前:{p2['名前']}, 強み:{p2['強み']}, 趣味:{p2['趣味']}
-                        """
-                        
-                        # 修正点2: エラーが起きた際、詳細を表示するようにする
-                        try:
-                            response = model.generate_content(prompt)
-                            st.markdown(f'<div class="ai-card">{response.text}</div>', unsafe_allow_html=True)
-                        except Exception as inner_e:
-                            st.error(f"モデル接続エラー: {inner_e}")
-                            st.info("💡 対策: Google AI Studioで新しいAPIキーを発行し、SettingsのSecretsを更新してみてください。")
-                    st.markdown(f'<div class="ai-card">{response.text}</div>', unsafe_allow_html=True)
+                try:
+                    with st.spinner("AIが考え中..."):
+                        # モデル名を最新の安定版に固定
+                        model = genai.GenerativeModel('gemini-1.5-flash')
+                        prompt = f"{p1['名前']}（強み:{p1['強み']}）と{p2['名前']}（強み:{p2['強み']}）のビジネス相性を100文字で分析して。"
+                        response = model.generate_content(prompt)
+                        st.success(response.text)
+                except Exception as e:
+                    st.error(f"エラーが発生しました: {e}")
 
 with tab2:
-    st.subheader("💪 チームのスキルマップ")
-    all_s = [s.strip() for s in ",".join(df['強み']).replace("、", ",").split(",") if s.strip()]
-    st.bar_chart(pd.Series(all_s).value_counts())
-
-with tab3:
-    st.subheader("🎲 トークテーマ")
-    if st.button("話題を振る"):
-        pair = df.sample(2)
-        st.info(f"{pair.iloc[0]['名前']}さんから{pair.iloc[1]['名前']}さんに『{pair.iloc[1]['マイブーム']}』について聞いてみよう！")
-
-st.divider()
-st.dataframe(df, use_container_width=True, hide_index=True)
+    st.dataframe(pd.DataFrame(st.session_state.member_list), use_container_width=True)
